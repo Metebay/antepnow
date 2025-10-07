@@ -7,52 +7,42 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+<body class="bg-slate-100 min-h-screen p-6">
 
-  <!-- Giriş Alanı -->
-  <div id="loginPanel" class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md">
-    <div class="text-center mb-6">
-      <i data-lucide="lock" class="w-10 h-10 text-blue-600 mx-auto mb-2"></i>
-      <h1 class="text-2xl font-bold text-slate-700">Yönetici Girişi</h1>
-    </div>
-    <form id="loginForm" class="space-y-4">
-      <input id="adminEmail" type="email" placeholder="E-posta" required
-        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
-      <input id="adminPassword" type="password" placeholder="Şifre" required
-        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
-      <button type="submit"
-        class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition">Giriş Yap</button>
-    </form>
-  </div>
+  <div class="max-w-5xl mx-auto">
+    <h1 class="text-3xl font-bold text-blue-700 mb-6 text-center">Yönetici Paneli</h1>
 
-  <!-- Haber Ekleme Alanı -->
-  <div id="adminPanel" class="hidden bg-white p-8 rounded-3xl shadow-2xl w-full max-w-2xl">
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold text-slate-700 flex items-center">
-        <i data-lucide="newspaper" class="w-6 h-6 mr-2 text-blue-600"></i> Haber Ekle
-      </h1>
-      <button id="logoutBtn" class="text-red-600 font-medium hover:underline">Çıkış Yap</button>
+    <!-- Haber Formu -->
+    <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+      <h2 class="text-2xl font-semibold mb-4">Haber Ekle / Düzenle</h2>
+      <form id="newsForm" class="flex flex-col gap-3" onsubmit="event.preventDefault()">
+        <input type="hidden" id="editId">
+        <input type="text" id="baslik" placeholder="Başlık" class="p-3 rounded-lg border border-gray-300" required>
+        <textarea id="icerik" placeholder="İçerik" rows="5" class="p-3 rounded-lg border border-gray-300" required></textarea>
+        <input type="text" id="fotoURL" placeholder="Görsel URL" class="p-3 rounded-lg border border-gray-300">
+        <select id="kategori" class="p-3 rounded-lg border border-gray-300">
+          <option value="">Kategori Seçin</option>
+          <option value="Siyaset">Siyaset</option>
+          <option value="Ekonomi">Ekonomi</option>
+          <option value="Spor">Spor</option>
+          <option value="Teknoloji">Teknoloji</option>
+        </select>
+        <button id="submitBtn" type="submit" class="bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition">Haberi Yayınla</button>
+      </form>
     </div>
 
-    <form id="haberForm" class="space-y-4">
-      <input id="baslik" type="text" placeholder="Haber Başlığı" required
-        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
-      <textarea id="icerik" placeholder="Haber İçeriği" required
-        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none h-32 resize-none"></textarea>
-      <input type="file" id="foto" accept="image/*"
-        class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-400">
-      <button type="submit"
-        class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition">Haberi Yayınla</button>
-    </form>
-
-    <p id="mesaj" class="mt-4 text-center text-green-600 font-medium hidden">✅ Haber başarıyla eklendi!</p>
+    <!-- Mevcut Haberler -->
+    <div class="bg-white p-6 rounded-2xl shadow-lg">
+      <h2 class="text-2xl font-semibold mb-4">Mevcut Haberler</h2>
+      <div id="haberListesiAdmin" class="flex flex-col gap-3">
+        <p class="text-gray-500">Haberler yükleniyor...</p>
+      </div>
+    </div>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-storage.js";
+    import { getFirestore, collection, addDoc, serverTimestamp, getDocs, deleteDoc, doc, updateDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAHDgrgdHzZ2UMzW6fdZTOxQ_xA4MiX3o8",
@@ -65,64 +55,89 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
-    const storage = getStorage(app);
+    const newsForm = document.getElementById("newsForm");
+    const haberListesiAdmin = document.getElementById("haberListesiAdmin");
+    const submitBtn = document.getElementById("submitBtn");
 
-    const loginPanel = document.getElementById("loginPanel");
-    const adminPanel = document.getElementById("adminPanel");
-    const mesaj = document.getElementById("mesaj");
+    async function haberleriGetir() {
+      const q = query(collection(db, "haberler"), orderBy("tarih", "desc"));
+      const snapshot = await getDocs(q);
+      const haberler = [];
+      snapshot.forEach(doc => haberler.push({ id: doc.id, ...doc.data() }));
+      renderHaberler(haberler);
+    }
 
-    // Giriş işlemi
-    document.getElementById("loginForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const email = document.getElementById("adminEmail").value;
-      const password = document.getElementById("adminPassword").value;
-
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-        loginPanel.classList.add("hidden");
-        adminPanel.classList.remove("hidden");
-      } catch (err) {
-        alert("Giriş başarısız: " + err.message);
+    function renderHaberler(list) {
+      haberListesiAdmin.innerHTML = "";
+      if (!list.length) {
+        haberListesiAdmin.innerHTML = `<p class="text-gray-500">Henüz haber yok.</p>`;
+        return;
       }
-    });
 
-    // Çıkış işlemi
-    document.getElementById("logoutBtn").addEventListener("click", async () => {
-      await signOut(auth);
-      adminPanel.classList.add("hidden");
-      loginPanel.classList.remove("hidden");
-    });
+      list.forEach(h => {
+        const tarih = h.tarih?.toDate().toLocaleString("tr-TR") || "Tarih yok";
+        const div = document.createElement("div");
+        div.className = "flex justify-between items-center bg-gray-50 p-3 rounded-lg shadow-sm";
 
-    // Haber ekleme
-    document.getElementById("haberForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const baslik = document.getElementById("baslik").value.trim();
-      const icerik = document.getElementById("icerik").value.trim();
-      const foto = document.getElementById("foto").files[0];
-      let fotoURL = "";
+        div.innerHTML = `
+          <div class="flex-1">
+            <p class="font-bold">${h.baslik} ${h.kategori ? '('+h.kategori+')' : ''}</p>
+            <p class="text-sm text-gray-500">${tarih}</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600" onclick="duzenle('${h.id}')">Düzenle</button>
+            <button class="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600" onclick="sil('${h.id}')">Sil</button>
+          </div>
+        `;
+        haberListesiAdmin.appendChild(div);
+      });
+    }
 
-      try {
-        if (foto) {
-          const storageRef = ref(storage, "haberler/" + foto.name);
-          await uploadBytes(storageRef, foto);
-          fotoURL = await getDownloadURL(storageRef);
-        }
-
-        await addDoc(collection(db, "haberler"), {
-          baslik, icerik, fotoURL, tarih: serverTimestamp()
-        });
-
-        mesaj.classList.remove("hidden");
-        e.target.reset();
-        setTimeout(() => mesaj.classList.add("hidden"), 3000);
-      } catch (err) {
-        alert("Hata: " + err.message);
+    async function sil(id) {
+      if (confirm("Bu haberi silmek istediğinizden emin misiniz?")) {
+        await deleteDoc(doc(db, "haberler", id));
+        haberleriGetir();
       }
+    }
+
+    window.duzenle = async function(id) {
+      const docRef = doc(db, "haberler", id);
+      const snapshot = await getDocs(collection(db, "haberler"));
+      const haberSnap = await docRef.get ? await docRef.get() : await getDoc(docRef);
+      const h = haberSnap.data();
+
+      document.getElementById("baslik").value = h.baslik;
+      document.getElementById("icerik").value = h.icerik;
+      document.getElementById("fotoURL").value = h.fotoURL || "";
+      document.getElementById("kategori").value = h.kategori || "";
+      document.getElementById("editId").value = id;
+      submitBtn.textContent = "Haberi Güncelle";
+    }
+
+    newsForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const baslik = document.getElementById("baslik").value;
+      const icerik = document.getElementById("icerik").value;
+      const fotoURL = document.getElementById("fotoURL").value;
+      const kategori = document.getElementById("kategori").value;
+      const editId = document.getElementById("editId").value;
+
+      const data = { baslik, icerik, fotoURL, kategori, tarih: serverTimestamp() };
+
+      if (editId) {
+        await updateDoc(doc(db, "haberler", editId), data);
+        submitBtn.textContent = "Haberi Yayınla";
+        document.getElementById("editId").value = "";
+      } else {
+        await addDoc(collection(db, "haberler"), data);
+      }
+
+      newsForm.reset();
+      haberleriGetir();
     });
 
-    lucide.createIcons();
+    haberleriGetir();
   </script>
 </body>
 </html>
