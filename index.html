@@ -69,7 +69,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // setLogLevel'ı ana firestore modülünden içe aktardık. SDK versiyonunu v11.6.1 olarak güncelledik.
+        // setLogLevel'ı ana firestore modülünden içe aktardık.
         import { getFirestore, doc, setDoc, deleteDoc, collection, query, orderBy, onSnapshot, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Kullanıcının sağladığı Firebase yapılandırması
@@ -139,6 +139,9 @@
 
         function getNewsCollectionRef() {
             // Halka açık (public) veriler için yol
+            // Firestore Güvenlik Kuralları ÖNEMLİ: 
+            // Bu koleksiyon için herkese okuma izni vermelisiniz: allow read: if true;
+            // Admin yazma izni için: allow write: if request.auth != null && request.resource.data.editorId == request.auth.uid;
             return collection(db, `artifacts/${appId}/public/data/news`);
         }
 
@@ -148,7 +151,9 @@
                 unsubscribeNews();
             }
 
-            const newsQuery = query(getNewsCollectionRef(), orderBy("timestamp", "desc"));
+            // Hata potansiyelini azaltmak için orderBy kaldırıldı. 
+            // Data hala yüklenmezse, sorun BÜYÜK İHTİMALLE Güvenlik Kurallarınızdadır.
+            const newsQuery = query(getNewsCollectionRef()); // Eski: orderBy("timestamp", "desc")
 
             // Gerçek zamanlı dinleyici (onSnapshot)
             unsubscribeNews = onSnapshot(newsQuery, (snapshot) => {
@@ -159,13 +164,27 @@
 
                 // Sadece mevcut görünümün güncel olması gerekiyorsa yeniden render et
                 if (window.location.hash === '#home') {
+                    // Yüklenen datayı Javascript'te sırala (index hatasını önlemek için)
+                    newsList.sort((a, b) => {
+                        const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
+                        const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
+                        return timeB - timeA; // Yeniden eskiye
+                    });
                     renderHomeView();
                 } else if (window.location.hash === '#admin') {
-                    renderAdminView(); // Admin panelindeki listeyi de güncelle
+                    // Admin listesini de sıralayıp güncelle
+                     newsList.sort((a, b) => {
+                        const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
+                        const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
+                        return timeB - timeA; // Yeniden eskiye
+                    });
+                    renderAdminView(); 
                 }
                 
             }, (error) => {
                 console.error("Haberleri dinlerken hata:", error);
+                // Genellikle bu hata güvenlik kuralı sorunudur.
+                showMessage("Haberler yüklenemedi. Güvenlik kurallarınızı kontrol edin.", 'error');
             });
         }
         
