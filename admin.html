@@ -3,105 +3,67 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Yönetim Paneli | Hızlı Haber</title>
+  <title>Haber Ekleme Paneli | Yönetici</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
-  </style>
 </head>
-<body>
-  <div class="flex min-h-screen">
-    <!-- Sol Menü -->
-    <aside class="w-64 bg-gray-900 text-white flex flex-col p-6">
-      <h2 class="text-2xl font-bold mb-6"><span class="text-red-500">Hızlı</span> Admin</h2>
-      <nav class="space-y-3">
-        <button id="tab-news" class="w-full text-left px-3 py-2 rounded hover:bg-gray-800 font-medium">📄 Haber Yönetimi</button>
-        <button id="logout-btn" class="w-full text-left px-3 py-2 rounded hover:bg-gray-800 font-medium text-red-400">🚪 Çıkış</button>
-      </nav>
-      <a href="index.html" class="mt-auto text-sm text-gray-400 hover:text-white">← Siteye Dön</a>
-    </aside>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
 
-    <!-- Ana İçerik -->
-    <main class="flex-1 p-8 overflow-y-auto">
-      <h1 class="text-3xl font-bold mb-6">Haber Yönetimi</h1>
+  <div class="bg-white p-8 rounded-2xl shadow-md w-full max-w-md">
+    <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">📰 Haber Ekle</h1>
 
-      <form id="news-form" class="bg-white p-6 rounded-xl shadow-md mb-10">
-        <input type="text" id="news-title" placeholder="Haber Başlığı" class="border p-3 rounded w-full mb-4" required>
-        <textarea id="news-content" placeholder="Haber İçeriği" rows="5" class="border p-3 rounded w-full mb-4" required></textarea>
-        <input type="text" id="news-image" placeholder="Görsel URL (opsiyonel)" class="border p-3 rounded w-full mb-4">
-        <button id="submit-btn" class="bg-red-600 text-white px-5 py-2 rounded hover:bg-red-700 transition">Haberi Yayınla</button>
-      </form>
+    <form id="haberForm" class="space-y-4">
+      <input id="baslik" type="text" placeholder="Haber Başlığı"
+        class="w-full p-3 border rounded-lg focus:ring focus:ring-blue-200" required>
+      
+      <textarea id="icerik" placeholder="Haber İçeriği"
+        class="w-full p-3 border rounded-lg h-32 focus:ring focus:ring-blue-200" required></textarea>
+      
+      <button type="submit"
+        class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition">Haber Ekle</button>
+    </form>
 
-      <div id="news-list"></div>
-    </main>
+    <p id="mesaj" class="mt-4 text-center text-green-600 font-medium hidden">Haber eklendi ✅</p>
   </div>
 
-  <!-- Firebase -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, deleteDoc, query, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
 
+    // 🔥 Firebase yapılandırması
     const firebaseConfig = {
-      // 🔹 kendi Firebase yapılandırmanı buraya ekle
+      apiKey: "AIzaSyAHDgrgdHzZ2UMzW6fdZTOxQ_xA4MiX3o8",
+      authDomain: "habersitesi-154d6.firebaseapp.com",
+      projectId: "habersitesi-154d6",
+      storageBucket: "habersitesi-154d6.firebasestorage.app",
+      messagingSenderId: "739656775591",
+      appId: "1:739656775591:web:4ffebd7a3963f3cf66a882",
+      measurementId: "G-G3BVBZCD32"
     };
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
-    const newsCol = collection(db, "artifacts/default-news-app-id/public/data/news");
 
-    const form = document.getElementById("news-form");
-    const list = document.getElementById("news-list");
+    // 🔹 Haber ekleme
+    document.getElementById("haberForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const baslik = document.getElementById("baslik").value.trim();
+      const icerik = document.getElementById("icerik").value.trim();
+      const mesaj = document.getElementById("mesaj");
 
-    // 🔸 Oturum kontrolü
-    onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        const email = prompt("Admin e-postası:");
-        const pass = prompt("Şifre:");
-        signInWithEmailAndPassword(auth, email, pass).catch(() => alert("Giriş başarısız!"));
-      } else {
-        loadNews();
+      if (!baslik || !icerik) return alert("Lütfen tüm alanları doldurun!");
+
+      try {
+        await addDoc(collection(db, "haberler"), {
+          baslik,
+          icerik,
+          tarih: serverTimestamp()
+        });
+        mesaj.classList.remove("hidden");
+        document.getElementById("haberForm").reset();
+      } catch (err) {
+        alert("Hata oluştu: " + err.message);
       }
     });
-
-    // 🔸 Haber ekleme
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const title = document.getElementById("news-title").value;
-      const content = document.getElementById("news-content").value;
-      const image = document.getElementById("news-image").value || "https://placehold.co/800x450";
-      const ref = doc(newsCol);
-      await setDoc(ref, { title, content, imageURL: image, timestamp: serverTimestamp() });
-      form.reset();
-    });
-
-    // 🔸 Haber listeleme
-    function loadNews() {
-      const q = query(newsCol);
-      onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        data.sort((a,b) => b.timestamp?.seconds - a.timestamp?.seconds);
-        list.innerHTML = data.map(n => `
-          <div class="bg-white p-4 rounded-xl shadow mb-3 flex justify-between items-center">
-            <div>
-              <h3 class="font-bold">${n.title}</h3>
-              <p class="text-sm text-gray-500">${new Date(n.timestamp?.toDate()).toLocaleString('tr-TR')}</p>
-            </div>
-            <button onclick="deleteNews('${n.id}')" class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Sil</button>
-          </div>
-        `).join('');
-      });
-    }
-
-    // 🔸 Haber silme
-    window.deleteNews = async (id) => {
-      await deleteDoc(doc(newsCol, id));
-    };
-
-    // 🔸 Çıkış
-    document.getElementById("logout-btn").addEventListener("click", () => signOut(auth));
   </script>
 </body>
 </html>
