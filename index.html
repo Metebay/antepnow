@@ -77,11 +77,6 @@
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
-        // Eğer firebaseConfig yoksa (ki olmamalı) hata ver
-        if (!firebaseConfig) {
-             console.error("Firebase yapılandırması bulunamadı. Lütfen Canvas ortamınızın Firebase bağlantısını kontrol edin.");
-        }
-
         let app, db, auth, userId = null;
         let newsList = []; 
         let unsubscribeNews = null;
@@ -92,6 +87,19 @@
         // --- Firebase ve Kimlik Doğrulama (Auth) Kurulumu ---
         async function setupFirebase() {
             try {
+                // KRİTİK KONTROL: Eğer yapılandırma yoksa (Hatanın kaynağı buydu), initializeApp'i çağırma ve kullanıcıya hata göster.
+                if (!firebaseConfig) {
+                    console.error("Firebase yapılandırması bulunamadı. Lütfen Canvas ortamınızın Firebase bağlantısını kontrol edin.");
+                    document.getElementById('content-view').innerHTML = `
+                        <div class="text-center py-10 bg-red-100 rounded-xl shadow-xl border-red-400 border-2 max-w-lg mx-auto mt-10">
+                            <h2 class="text-2xl font-bold text-red-700 mb-4">Firebase Bağlantı Hatası</h2>
+                            <p class="text-red-600 font-medium">Bu uygulama çalışmak için **Firebase Proje Yapılandırmasına** ihtiyaç duyuyor.</p>
+                            <p class="text-sm text-gray-500 mt-2">Lütfen Canvas ortamınızdaki Firebase bağlantısının doğru ayarlandığından emin olun.</p>
+                        </div>
+                    `;
+                    return; // Kritik: Yapılandırma yoksa burada dur.
+                }
+
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -101,7 +109,7 @@
                     // 1. Canvas'ın sağladığı token ile oturum aç
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
-                    // 2. Token yoksa, anonim oturum açmaya çalış (hata bu satırda oluşuyordu)
+                    // 2. Token yoksa, anonim oturum açmaya çalış
                     await signInAnonymously(auth); 
                 }
                 
@@ -123,7 +131,8 @@
 
             } catch (error) {
                 console.error("Firebase Kurulum Hatası:", error);
-                document.getElementById('content-view').innerHTML = `<p class="text-center text-red-500 font-bold">Uygulama Hatası: Giriş İşlemi Başarısız. Firebase Konsolunda <span class="text-red-700">Anonim</span> veya <span class="text-red-700">Email/Şifre</span> giriş yöntemlerini kontrol edin. (Hata: ${error.message})</p>`;
+                // Genel hata yakalama ve bilgilendirme
+                document.getElementById('content-view').innerHTML = `<p class="text-center text-red-500 font-bold">Uygulama Hatası: Giriş İşlemi Başarısız. Giriş yöntemlerini veya izinleri kontrol edin. (Hata: ${error.message})</p>`;
             }
         }
 
