@@ -3,33 +3,57 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Haber Ekleme Paneli | Yönetici</title>
+  <title>Yönetici Paneli | Modern Haber CMS</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
 
-  <div class="bg-white p-8 rounded-2xl shadow-md w-full max-w-md">
-    <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">📰 Haber Ekle</h1>
+  <!-- Giriş Alanı -->
+  <div id="loginPanel" class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md">
+    <div class="text-center mb-6">
+      <i data-lucide="lock" class="w-10 h-10 text-blue-600 mx-auto mb-2"></i>
+      <h1 class="text-2xl font-bold text-slate-700">Yönetici Girişi</h1>
+    </div>
+    <form id="loginForm" class="space-y-4">
+      <input id="adminEmail" type="email" placeholder="E-posta" required
+        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
+      <input id="adminPassword" type="password" placeholder="Şifre" required
+        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
+      <button type="submit"
+        class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition">Giriş Yap</button>
+    </form>
+  </div>
+
+  <!-- Haber Ekleme Alanı -->
+  <div id="adminPanel" class="hidden bg-white p-8 rounded-3xl shadow-2xl w-full max-w-2xl">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-slate-700 flex items-center">
+        <i data-lucide="newspaper" class="w-6 h-6 mr-2 text-blue-600"></i> Haber Ekle
+      </h1>
+      <button id="logoutBtn" class="text-red-600 font-medium hover:underline">Çıkış Yap</button>
+    </div>
 
     <form id="haberForm" class="space-y-4">
-      <input id="baslik" type="text" placeholder="Haber Başlığı"
-        class="w-full p-3 border rounded-lg focus:ring focus:ring-blue-200" required>
-      
-      <textarea id="icerik" placeholder="Haber İçeriği"
-        class="w-full p-3 border rounded-lg h-32 focus:ring focus:ring-blue-200" required></textarea>
-      
+      <input id="baslik" type="text" placeholder="Haber Başlığı" required
+        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none">
+      <textarea id="icerik" placeholder="Haber İçeriği" required
+        class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none h-32 resize-none"></textarea>
+      <input type="file" id="foto" accept="image/*"
+        class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-400">
       <button type="submit"
-        class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition">Haber Ekle</button>
+        class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition">Haberi Yayınla</button>
     </form>
 
-    <p id="mesaj" class="mt-4 text-center text-green-600 font-medium hidden">Haber eklendi ✅</p>
+    <p id="mesaj" class="mt-4 text-center text-green-600 font-medium hidden">✅ Haber başarıyla eklendi!</p>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-storage.js";
 
-    // 🔥 Firebase yapılandırması
     const firebaseConfig = {
       apiKey: "AIzaSyAHDgrgdHzZ2UMzW6fdZTOxQ_xA4MiX3o8",
       authDomain: "habersitesi-154d6.firebaseapp.com",
@@ -41,29 +65,64 @@
     };
 
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
 
-    // 🔹 Haber ekleme
+    const loginPanel = document.getElementById("loginPanel");
+    const adminPanel = document.getElementById("adminPanel");
+    const mesaj = document.getElementById("mesaj");
+
+    // Giriş işlemi
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("adminEmail").value;
+      const password = document.getElementById("adminPassword").value;
+
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        loginPanel.classList.add("hidden");
+        adminPanel.classList.remove("hidden");
+      } catch (err) {
+        alert("Giriş başarısız: " + err.message);
+      }
+    });
+
+    // Çıkış işlemi
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      await signOut(auth);
+      adminPanel.classList.add("hidden");
+      loginPanel.classList.remove("hidden");
+    });
+
+    // Haber ekleme
     document.getElementById("haberForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const baslik = document.getElementById("baslik").value.trim();
       const icerik = document.getElementById("icerik").value.trim();
-      const mesaj = document.getElementById("mesaj");
-
-      if (!baslik || !icerik) return alert("Lütfen tüm alanları doldurun!");
+      const foto = document.getElementById("foto").files[0];
+      let fotoURL = "";
 
       try {
+        if (foto) {
+          const storageRef = ref(storage, "haberler/" + foto.name);
+          await uploadBytes(storageRef, foto);
+          fotoURL = await getDownloadURL(storageRef);
+        }
+
         await addDoc(collection(db, "haberler"), {
-          baslik,
-          icerik,
-          tarih: serverTimestamp()
+          baslik, icerik, fotoURL, tarih: serverTimestamp()
         });
+
         mesaj.classList.remove("hidden");
-        document.getElementById("haberForm").reset();
+        e.target.reset();
+        setTimeout(() => mesaj.classList.add("hidden"), 3000);
       } catch (err) {
-        alert("Hata oluştu: " + err.message);
+        alert("Hata: " + err.message);
       }
     });
+
+    lucide.createIcons();
   </script>
 </body>
 </html>
