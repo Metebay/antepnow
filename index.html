@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anadolu Ajansı - Güncel Haberler</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #EF4444; /* Kırmızı */
+            --secondary-color: #1F2937; /* Koyu Gri */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f9fafb;
+            color: var(--secondary-color);
+        }
+        /* Özel Tailwind Yapılandırması */
+        .admin-input {
+            padding: 10px;
+            margin-bottom: 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .admin-btn {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            transition: background-color 0.2s;
+            cursor: pointer;
+        }
+        .admin-btn:hover {
+            background-color: #DC2626;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <!-- Başlık (Home ve Admin görünümü arasında kalıcı) -->
+        <header class="bg-white shadow-md rounded-xl mb-8 p-4 flex justify-between items-center sticky top-0 z-10">
+            <h1 class="text-3xl font-extrabold text-gray-900 cursor-pointer" onclick="window.location.hash='home'">
+                <span class="text-red-600">Hızlı</span> Haber
+            </h1>
+            <nav>
+                <button id="nav-home-btn" class="text-gray-700 hover:text-red-600 font-medium mr-4" onclick="window.location.hash='home'">Ana Sayfa</button>
+                <button id="nav-admin-btn" class="text-gray-700 hover:text-red-600 font-medium" onclick="window.location.hash='admin'">Yönetim Paneli</button>
+            </nav>
+        </header>
+
+        <!-- İçerik Alanı (Görünümler burada değişir) -->
+        <div id="content-view">
+            <div class="text-center py-10">
+                <div class="animate-pulse text-gray-500">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2h-4m-7-2v2m14-2v2M7 10h10M7 14h10M7 18h10"></path></svg>
+                    <p class="mt-2 text-sm font-semibold">Uygulama Yükleniyor...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK'ları -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, collection, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-lite.js";
+
+        // Kullanıcının sağladığı Firebase yapılandırması
+        const explicitFirebaseConfig = { 
+            apiKey: "AIzaSyAHDgrgdHzZ2UMzW6fdZTOxQ_xA4MiX3o8",
+            authDomain: "habersitesi-154d6.firebaseapp.com",
+            projectId: "habersitesi-154d6",
+            storageBucket: "habersitesi-154d6.firebasestorage.app",
+            messagingSenderId: "739656775591",
+            appId: "1:739656775591:web:4ffebd7a3963f3cf66a882",
+            measurementId: "G-G3BVBZCD32"
+        };
+        
+        // Global Değişkenler ve Güvenlik Kuralları için Zorunlu Tanımlar
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-news-app-id';
+        // Canvas ortamından gelen config varsa onu kullan, yoksa kullanıcının explicit config'ini kullan.
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : explicitFirebaseConfig; 
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        let app, db, auth, userId = null;
+        let newsList = []; // Tüm haberleri tutacak dizi
+        let unsubscribeNews = null;
+
+        // Firestore loglarını aç
+        setLogLevel('Debug');
+
+        // --- Firebase ve Kimlik Doğrulama (Auth) Kurulumu ---
+        async function setupFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Kimlik Doğrulama İşlemi
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    // Auth token yoksa anonim olarak oturum aç (halka açık okuma için)
+                    await signInAnonymously(auth);
+                }
+                
+                // Kullanıcı durumu değiştiğinde tetiklenir
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        // Halka açık veriler için koleksiyon yolu (Security Rules ile korunmalıdır)
+                        setupNewsListener(); 
+                        console.log("Firebase Auth Hazır. Kullanıcı ID:", userId);
+                    } else {
+                        userId = null;
+                        console.log("Kullanıcı oturumu kapalı (Anonim veya Çıkış Yapmış).");
+                        // Eğer admin sayfasındaysa, giriş ekranına yönlendir.
+                        if (window.location.hash === '#admin') {
+                             renderAdminView();
+                        }
+                    }
+                    handleRouting(); // Auth durumu değiştiğinde yeniden yönlendir
+                });
+
+            } catch (error) {
+                console.error("Firebase Kurulum Hatası:", error);
+                document.getElementById('content-view').innerHTML = `<p class="text-center text-red-500">Firebase yüklenemedi. Konsolu kontrol edin. (Hata: ${error.message})</p>`;
+            }
+        }
+
+        // --- Firestore İşlemleri ---
+
+        function getNewsCollectionRef() {
+            // Halka açık (public) veriler için yol
+            return collection(db, `artifacts/${appId}/public/data/news`);
+        }
+
+        function setupNewsListener() {
+            // Önceki dinleyiciyi temizle
+            if (unsubscribeNews) {
+                unsubscribeNews();
+            }
+
+            const newsQuery = query(getNewsCollectionRef(), orderBy("timestamp", "desc"));
+
+            // Gerçek zamanlı dinleyici (onSnapshot)
+            unsubscribeNews = onSnapshot(newsQuery, (snapshot) => {
+                const changes = snapshot.docChanges();
+                
+                // Tüm haber listesini güncelle
+                newsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                // Sadece mevcut görünümün güncel olması gerekiyorsa yeniden render et
+                if (window.location.hash === '#home') {
+                    renderHomeView();
+                } else if (window.location.hash === '#admin') {
+                    renderAdminView(); // Admin panelindeki listeyi de güncelle
+                }
+                
+            }, (error) => {
+                console.error("Haberleri dinlerken hata:", error);
+            });
+        }
+        
+        // --- Auth Fonksiyonları (Admin Paneli) ---
+        window.login = async function() {
+            const email = document.getElementById('admin-email').value;
+            const password = document.getElementById('admin-password').value;
+            
+            if (!email || !password) {
+                 showMessage("E-posta ve şifre zorunludur.", 'error');
+                return;
+            }
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showMessage("Başarıyla giriş yapıldı!", 'success');
+            } catch (error) {
+                showMessage(`Giriş Hatası: ${error.message}`, 'error');
+                console.error("Giriş Hatası:", error);
+            }
+        }
+
+        window.logout = function() {
+            signOut(auth);
+            showMessage("Oturum kapatıldı.", 'info');
+        }
+
+
+        // --- Haber CRUD Fonksiyonları ---
+        window.publishNews = async function(docIdToEdit = null) {
+            if (!auth.currentUser || auth.currentUser.isAnonymous) {
+                showMessage("Admin yetkisi gereklidir.", 'error');
+                return;
+            }
+
+            const title = document.getElementById('news-title').value;
+            const content = document.getElementById('news-content').value;
+            const imageURL = document.getElementById('news-image-url').value || "https://placehold.co/800x450/e0e0e0/333333?text=Gorsel+Yok";
+            
+            if (!title || !content) {
+                showMessage("Başlık ve İçerik boş bırakılamaz.", 'error');
+                return;
+            }
+
+            const newsData = {
+                title: title,
+                content: content,
+                imageURL: imageURL,
+                timestamp: serverTimestamp(),
+                editorId: userId
+            };
+
+            try {
+                if (docIdToEdit) {
+                    // Düzenleme (Set doc ile var olanı güncelle)
+                    await setDoc(doc(getNewsCollectionRef(), docIdToEdit), newsData, { merge: true });
+                    showMessage("Haber başarıyla güncellendi!", 'success');
+                } else {
+                    // Yeni Ekleme
+                    const newDocRef = doc(getNewsCollectionRef());
+                    await setDoc(newDocRef, newsData);
+                    showMessage("Yeni haber başarıyla yayınlandı!", 'success');
+                }
+                
+                // Formu temizle ve görünümü yenile
+                document.getElementById('news-form').reset();
+                document.getElementById('form-submit-btn').textContent = 'Haberi Yayınla';
+                document.getElementById('form-submit-btn').onclick = () => window.publishNews(null);
+                
+            } catch (error) {
+                showMessage(`Haber yayınlanırken/güncellenirken hata oluştu: ${error.message}`, 'error');
+                console.error("Haber İşlemi Hatası:", error);
+            }
+        }
+
+        window.deleteNews = async function(docId) {
+            if (!auth.currentUser || auth.currentUser.isAnonymous) {
+                showMessage("Admin yetkisi gereklidir.", 'error');
+                return;
+            }
+            
+            // NOTE: window.confirm() kullanımı platform kısıtlamaları nedeniyle kaldırıldı. 
+            // Silme işlemi butona tıklanır tıklanmaz gerçekleştirilecektir.
+
+            try {
+                await deleteDoc(doc(getNewsCollectionRef(), docId));
+                showMessage("Haber başarıyla silindi.", 'success');
+            } catch (error) {
+                showMessage(`Silme işlemi başarısız oldu: ${error.message}`, 'error');
+                console.error("Silme Hatası:", error);
+            }
+        }
+
+        window.editNews = function(newsItem) {
+            // Formu haber verileriyle doldur ve güncelleme moduna geçir
+            document.getElementById('news-title').value = newsItem.title;
+            document.getElementById('news-content').value = newsItem.content;
+            document.getElementById('news-image-url').value = newsItem.imageURL;
+            
+            document.getElementById('form-submit-btn').textContent = 'Haberi Güncelle';
+            document.getElementById('form-submit-btn').onclick = () => window.publishNews(newsItem.id);
+            
+            // Sayfanın üstüne kaydır
+            document.getElementById('admin-header').scrollIntoView({ behavior: 'smooth' });
+        }
+
+
+        // --- UI ve Mesaj Gösterme ---
+        function showMessage(message, type = 'info') {
+            const container = document.getElementById('app');
+            let bgColor;
+            if (type === 'success') bgColor = 'bg-green-100 border-green-400 text-green-700';
+            else if (type === 'error') bgColor = 'bg-red-100 border-red-400 text-red-700';
+            else bgColor = 'bg-blue-100 border-blue-400 text-blue-700';
+
+            const messageBox = document.createElement('div');
+            messageBox.className = `fixed top-4 right-4 p-4 border rounded-lg shadow-lg z-50 transition-opacity duration-300 ${bgColor}`;
+            messageBox.textContent = message;
+            
+            container.appendChild(messageBox);
+
+            setTimeout(() => {
+                messageBox.classList.add('opacity-0');
+                messageBox.addEventListener('transitionend', () => messageBox.remove());
+            }, 3000);
+        }
+
+        // --- Görünüm Render Fonksiyonları ---
+
+        function renderHomeView() {
+            const contentView = document.getElementById('content-view');
+            
+            if (newsList.length === 0) {
+                contentView.innerHTML = `
+                    <div class="text-center py-10 bg-white rounded-xl shadow-lg">
+                        <h2 class="text-2xl font-bold mb-4">Henüz yayınlanmış bir haber yok.</h2>
+                        <p class="text-gray-500">Yönetim panelinden ilk haberi ekleyebilirsiniz.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Haberi çekme ve detaylı görüntüleme kısmı
+            const newsHtml = newsList.map(news => `
+                <article class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col md:flex-row mb-6">
+                    <div class="md:w-1/3 h-56 md:h-auto overflow-hidden">
+                        <img class="w-full h-full object-cover transition-transform duration-500 hover:scale-105" 
+                             src="${news.imageURL}" 
+                             alt="${news.title}"
+                             onerror="this.onerror=null; this.src='https://placehold.co/800x450/e0e0e0/333333?text=Gorsel+Yuklenemedi';"
+                        >
+                    </div>
+                    <div class="md:w-2/3 p-6 flex flex-col justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-900 mb-2">${news.title}</h2>
+                            <p class="text-gray-600 mb-4 line-clamp-3">${news.content}</p>
+                        </div>
+                        <div class="flex justify-between items-center text-sm text-gray-400">
+                            <span>Yayınlanma: ${news.timestamp ? new Date(news.timestamp.toDate()).toLocaleDateString('tr-TR') : 'Yükleniyor...'}</span>
+                            <a href="#" class="text-red-600 hover:text-red-700 font-semibold transition-colors">Devamını Oku &rarr;</a>
+                        </div>
+                    </div>
+                </article>
+            `).join('');
+
+            contentView.innerHTML = `
+                <div class="text-center mb-8">
+                    <h2 class="text-4xl font-extrabold text-gray-900">En Son Manşetler</h2>
+                    <p class="text-gray-500 mt-2">Sıcak gelişmeler, anında yayında.</p>
+                </div>
+                <div id="news-grid">
+                    ${newsHtml}
+                </div>
+            `;
+        }
+
+        function renderAdminView() {
+            const contentView = document.getElementById('content-view');
+
+            if (!auth.currentUser || auth.currentUser.isAnonymous) {
+                // Giriş Ekranı
+                contentView.innerHTML = `
+                    <div class="max-w-md mx-auto bg-white p-8 shadow-2xl rounded-xl mt-10">
+                        <h2 class="text-3xl font-bold text-center text-red-600 mb-6">Yönetim Paneli Girişi</h2>
+                        <p class="text-gray-600 text-center mb-6">Yalnızca yetkili kullanıcılar erişebilir.</p>
+                        <input type="email" id="admin-email" placeholder="Admin E-postası" class="admin-input" required>
+                        <input type="password" id="admin-password" placeholder="Şifre" class="admin-input" required>
+                        <button onclick="login()" class="admin-btn w-full">Giriş Yap</button>
+                        <p class="text-xs text-center text-gray-500 mt-4">Kullanıcı ID: ${userId || 'Yükleniyor...'}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Admin İçeriği
+            contentView.innerHTML = `
+                <h2 id="admin-header" class="text-3xl font-bold text-gray-900 mb-6 border-b pb-2">Haber Yönetimi</h2>
+                <div class="bg-white p-6 shadow-xl rounded-xl mb-8">
+                    <h3 class="text-2xl font-semibold text-red-600 mb-4">Haber Oluştur/Düzenle</h3>
+                    <form id="news-form" onsubmit="event.preventDefault()">
+                        <input type="text" id="news-title" placeholder="Haber Başlığı" class="admin-input text-xl font-bold" required>
+                        <textarea id="news-content" rows="6" placeholder="Haber İçeriği" class="admin-input" required></textarea>
+                        <input type="text" id="news-image-url" placeholder="Görsel URL'si (Örn: https://...)" class="admin-input">
+                        <button id="form-submit-btn" type="submit" onclick="publishNews()" class="admin-btn w-full">Haberi Yayınla</button>
+                    </form>
+                    <button onclick="logout()" class="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Oturumu Kapat</button>
+                </div>
+
+                <div class="mt-10">
+                    <h3 class="text-2xl font-semibold text-gray-900 mb-4">Mevcut Haberler (${newsList.length})</h3>
+                    <div id="current-news-list">
+                        ${renderNewsList()}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderNewsList() {
+            if (newsList.length === 0) {
+                return '<p class="text-gray-500 p-4 bg-white rounded-lg shadow-sm">Henüz yayınlanmış haber bulunmamaktadır.</p>';
+            }
+
+            return newsList.map(news => `
+                <div class="flex justify-between items-center bg-white p-4 mb-3 rounded-lg shadow-sm border border-gray-200">
+                    <div class="flex-1 min-w-0 mr-4">
+                        <p class="font-bold truncate">${news.title}</p>
+                        <p class="text-sm text-gray-500">Yayın: ${news.timestamp ? new Date(news.timestamp.toDate()).toLocaleDateString('tr-TR') : 'Yükleniyor...'}</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick='editNews(${JSON.stringify(news)})' class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors">Düzenle</button>
+                        <button onclick="deleteNews('${news.id}')" class="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors">Sil</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // --- Router ve Başlatma ---
+        function handleRouting() {
+            const hash = window.location.hash || '#home';
+            document.getElementById('content-view').innerHTML = ''; // İçeriği temizle
+            
+            if (hash === '#admin') {
+                renderAdminView();
+            } else {
+                window.location.hash = 'home'; // Varsayılanı #home olarak ayarla
+                renderHomeView();
+            }
+            
+            // Navigasyonu aktif/pasif yap
+            document.getElementById('nav-home-btn').classList.toggle('text-red-600', hash === '#home');
+            document.getElementById('nav-admin-btn').classList.toggle('text-red-600', hash === '#admin');
+            document.getElementById('nav-home-btn').classList.toggle('text-gray-700', hash !== '#home');
+            document.getElementById('nav-admin-btn').classList.toggle('text-gray-700', hash !== '#admin');
+        }
+
+        // Uygulama yüklendiğinde başlat
+        window.addEventListener('hashchange', handleRouting);
+        window.onload = setupFirebase;
+
+    </script>
+</body>
+</html>
