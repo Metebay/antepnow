@@ -3,23 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Haber Sitesi | Güncel Haberler</title>
+  <title>Güncel Haberler | Modern Haber Sitesi</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body class="bg-gray-100 min-h-screen">
-  <header class="bg-blue-600 text-white p-4 text-center text-2xl font-bold shadow-md">
-    🌍 Güncel Haberler
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+  <header class="bg-blue-600 text-white py-5 shadow-lg">
+    <div class="max-w-5xl mx-auto px-4 flex items-center justify-between">
+      <h1 class="text-2xl font-bold flex items-center">
+        <i data-lucide="newspaper" class="w-6 h-6 mr-2 text-white"></i> Güncel Haberler
+      </h1>
+      <a href="admin.html"
+        class="bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-100 transition">
+        + Haber Ekle
+      </a>
+    </div>
   </header>
 
-  <main class="p-6 flex flex-col gap-4 max-w-2xl mx-auto">
-    <div id="haberListesi" class="space-y-4 text-gray-800"></div>
+  <main class="flex-1 max-w-5xl mx-auto p-6 grid md:grid-cols-2 lg:grid-cols-3 gap-6" id="haberListesi">
+    <p class="col-span-full text-center text-gray-500">Haberler yükleniyor...</p>
   </main>
+
+  <footer class="bg-blue-600 text-white text-center py-4 mt-8">
+    © 2025 Modern Haber Sitesi
+  </footer>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
     import { getFirestore, collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
 
-    // 🔥 Firebase yapılandırması
     const firebaseConfig = {
       apiKey: "AIzaSyAHDgrgdHzZ2UMzW6fdZTOxQ_xA4MiX3o8",
       authDomain: "habersitesi-154d6.firebaseapp.com",
@@ -32,32 +45,39 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
     const haberListesi = document.getElementById("haberListesi");
 
-    // 🔹 Firestore'dan haberleri çek
     async function haberleriGetir() {
       const q = query(collection(db, "haberler"), orderBy("tarih", "desc"));
       const querySnapshot = await getDocs(q);
+
       haberListesi.innerHTML = "";
 
       if (querySnapshot.empty) {
-        haberListesi.innerHTML = `<p class="text-center text-gray-500">Henüz haber eklenmemiş.</p>`;
+        haberListesi.innerHTML = `<p class="col-span-full text-center text-gray-500">Henüz haber eklenmemiş.</p>`;
         return;
       }
 
       querySnapshot.forEach((doc) => {
         const haber = doc.data();
         const tarih = haber.tarih?.toDate().toLocaleString("tr-TR") || "Tarih yok";
-        const div = document.createElement("div");
-        div.className = "bg-white p-4 rounded-xl shadow hover:shadow-lg transition";
-        div.innerHTML = `
-          <h2 class="text-xl font-bold mb-2 text-blue-700">${haber.baslik}</h2>
-          <p class="text-gray-700 mb-2">${haber.icerik}</p>
-          <p class="text-sm text-gray-500">🕒 ${tarih}</p>
+
+        const card = document.createElement("div");
+        card.className =
+          "bg-white p-5 rounded-2xl shadow-md hover:shadow-xl transition transform hover:-translate-y-1 duration-300";
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-bold text-blue-700">${haber.baslik}</h2>
+            <i data-lucide="clock" class="w-4 h-4 text-gray-400"></i>
+          </div>
+          <p class="text-gray-700 mb-3">${haber.icerik}</p>
+          <p class="text-xs text-gray-500">${tarih}</p>
         `;
-        haberListesi.appendChild(div);
+        haberListesi.appendChild(card);
       });
+
+      lucide.createIcons();
     }
 
     haberleriGetir();
