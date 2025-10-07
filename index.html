@@ -7,7 +7,7 @@
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght400;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary-color: #EF4444; /* Kırmızı */
@@ -69,28 +69,21 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // setLogLevel'ı ana firestore modülünden içe aktardık.
-        import { getFirestore, doc, setDoc, deleteDoc, collection, query, orderBy, onSnapshot, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, deleteDoc, collection, query, onSnapshot, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Kullanıcının sağladığı Firebase yapılandırması
-        const explicitFirebaseConfig = { 
-            apiKey: "AIzaSyAHDgrgdHzZ2UMzW6fdZTOxQ_xA4MiX3o8",
-            authDomain: "habersitesi-154d6.firebaseapp.com",
-            projectId: "habersitesi-154d6",
-            storageBucket: "habersitesi-154d6.firebasestorage.app",
-            messagingSenderId: "739656775591",
-            appId: "1:739656775591:web:4ffebd7a3963f3cf66a882",
-            measurementId: "G-G3BVBZCD32"
-        };
         
-        // Global Değişkenler ve Güvenlik Kuralları için Zorunlu Tanımlar
+        // Canvas Global Değişkenleri KULLANILIYOR
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-news-app-id';
-        // Canvas ortamından gelen config varsa onu kullan, yoksa kullanıcının explicit config'ini kullan.
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : explicitFirebaseConfig; 
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
+        // Eğer firebaseConfig yoksa (ki olmamalı) hata ver
+        if (!firebaseConfig) {
+             console.error("Firebase yapılandırması bulunamadı. Lütfen Canvas ortamınızın Firebase bağlantısını kontrol edin.");
+        }
+
         let app, db, auth, userId = null;
-        let newsList = []; // Tüm haberleri tutacak dizi
+        let newsList = []; 
         let unsubscribeNews = null;
 
         // Firestore loglarını aç
@@ -105,33 +98,32 @@
                 
                 // Kimlik Doğrulama İşlemi
                 if (initialAuthToken) {
+                    // 1. Canvas'ın sağladığı token ile oturum aç
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
-                    // Auth token yoksa anonim olarak oturum aç (halka açık okuma için)
-                    await signInAnonymously(auth);
+                    // 2. Token yoksa, anonim oturum açmaya çalış (hata bu satırda oluşuyordu)
+                    await signInAnonymously(auth); 
                 }
                 
                 // Kullanıcı durumu değiştiğinde tetiklenir
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
-                        // Halka açık veriler için koleksiyon yolu (Security Rules ile korunmalıdır)
                         setupNewsListener(); 
                         console.log("Firebase Auth Hazır. Kullanıcı ID:", userId);
                     } else {
                         userId = null;
-                        console.log("Kullanıcı oturumu kapalı (Anonim veya Çıkış Yapmış).");
-                        // Eğer admin sayfasındaysa, giriş ekranına yönlendir.
+                        console.log("Kullanıcı oturumu kapalı.");
                         if (window.location.hash === '#admin') {
                              renderAdminView();
                         }
                     }
-                    handleRouting(); // Auth durumu değiştiğinde yeniden yönlendir
+                    handleRouting(); 
                 });
 
             } catch (error) {
                 console.error("Firebase Kurulum Hatası:", error);
-                document.getElementById('content-view').innerHTML = `<p class="text-center text-red-500">Firebase yüklenemedi. Konsolu kontrol edin. (Hata: ${error.message})</p>`;
+                document.getElementById('content-view').innerHTML = `<p class="text-center text-red-500 font-bold">Uygulama Hatası: Giriş İşlemi Başarısız. Firebase Konsolunda <span class="text-red-700">Anonim</span> veya <span class="text-red-700">Email/Şifre</span> giriş yöntemlerini kontrol edin. (Hata: ${error.message})</p>`;
             }
         }
 
@@ -139,51 +131,36 @@
 
         function getNewsCollectionRef() {
             // Halka açık (public) veriler için yol
-            // Firestore Güvenlik Kuralları ÖNEMLİ: 
-            // Bu koleksiyon için herkese okuma izni vermelisiniz: allow read: if true;
-            // Admin yazma izni için: allow write: if request.auth != null && request.resource.data.editorId == request.auth.uid;
             return collection(db, `artifacts/${appId}/public/data/news`);
         }
 
         function setupNewsListener() {
-            // Önceki dinleyiciyi temizle
             if (unsubscribeNews) {
                 unsubscribeNews();
             }
 
-            // Hata potansiyelini azaltmak için orderBy kaldırıldı. 
-            // Data hala yüklenmezse, sorun BÜYÜK İHTİMALLE Güvenlik Kurallarınızdadır.
-            const newsQuery = query(getNewsCollectionRef()); // Eski: orderBy("timestamp", "desc")
+            // Güvenlik kuralları hatası nedeniyle orderBy kaldırıldı ve Javascript ile sıralanacak.
+            const newsQuery = query(getNewsCollectionRef()); 
 
             // Gerçek zamanlı dinleyici (onSnapshot)
             unsubscribeNews = onSnapshot(newsQuery, (snapshot) => {
-                const changes = snapshot.docChanges();
-                
-                // Tüm haber listesini güncelle
                 newsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                // Sadece mevcut görünümün güncel olması gerekiyorsa yeniden render et
+                // Data'yı Javascript'te yeniden eskiye göre sırala
+                 newsList.sort((a, b) => {
+                    const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
+                    const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
+                    return timeB - timeA; // Yeniden eskiye
+                });
+
                 if (window.location.hash === '#home') {
-                    // Yüklenen datayı Javascript'te sırala (index hatasını önlemek için)
-                    newsList.sort((a, b) => {
-                        const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
-                        const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
-                        return timeB - timeA; // Yeniden eskiye
-                    });
                     renderHomeView();
                 } else if (window.location.hash === '#admin') {
-                    // Admin listesini de sıralayıp güncelle
-                     newsList.sort((a, b) => {
-                        const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
-                        const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
-                        return timeB - timeA; // Yeniden eskiye
-                    });
                     renderAdminView(); 
                 }
                 
             }, (error) => {
                 console.error("Haberleri dinlerken hata:", error);
-                // Genellikle bu hata güvenlik kuralı sorunudur.
                 showMessage("Haberler yüklenemedi. Güvenlik kurallarınızı kontrol edin.", 'error');
             });
         }
@@ -215,8 +192,9 @@
 
         // --- Haber CRUD Fonksiyonları ---
         window.publishNews = async function(docIdToEdit = null) {
+            // Bu kontrol, anonim kullanıcıların yazma izni almasını engeller
             if (!auth.currentUser || auth.currentUser.isAnonymous) {
-                showMessage("Admin yetkisi gereklidir.", 'error');
+                showMessage("Admin yetkisi gereklidir. Lütfen e-posta ve şifre ile giriş yapın.", 'error');
                 return;
             }
 
@@ -234,16 +212,14 @@
                 content: content,
                 imageURL: imageURL,
                 timestamp: serverTimestamp(),
-                editorId: userId
+                editorId: userId // Bu alan, güvenlik kuralında kullanılacak.
             };
 
             try {
                 if (docIdToEdit) {
-                    // Düzenleme (Set doc ile var olanı güncelle)
                     await setDoc(doc(getNewsCollectionRef(), docIdToEdit), newsData, { merge: true });
                     showMessage("Haber başarıyla güncellendi!", 'success');
                 } else {
-                    // Yeni Ekleme
                     const newDocRef = doc(getNewsCollectionRef());
                     await setDoc(newDocRef, newsData);
                     showMessage("Yeni haber başarıyla yayınlandı!", 'success');
@@ -255,7 +231,7 @@
                 document.getElementById('form-submit-btn').onclick = () => window.publishNews(null);
                 
             } catch (error) {
-                showMessage(`Haber yayınlanırken/güncellenirken hata oluştu: ${error.message}`, 'error');
+                showMessage(`Haber yayınlanırken/güncellenirken hata oluştu: Yetki Yok.`, 'error');
                 console.error("Haber İşlemi Hatası:", error);
             }
         }
@@ -265,9 +241,6 @@
                 showMessage("Admin yetkisi gereklidir.", 'error');
                 return;
             }
-            
-            // NOTE: window.confirm() kullanımı platform kısıtlamaları nedeniyle kaldırıldı. 
-            // Silme işlemi butona tıklanır tıklanmaz gerçekleştirilecektir.
 
             try {
                 await deleteDoc(doc(getNewsCollectionRef(), docId));
@@ -279,7 +252,6 @@
         }
 
         window.editNews = function(newsItem) {
-            // Formu haber verileriyle doldur ve güncelleme moduna geçir
             document.getElementById('news-title').value = newsItem.title;
             document.getElementById('news-content').value = newsItem.content;
             document.getElementById('news-image-url').value = newsItem.imageURL;
@@ -287,7 +259,6 @@
             document.getElementById('form-submit-btn').textContent = 'Haberi Güncelle';
             document.getElementById('form-submit-btn').onclick = () => window.publishNews(newsItem.id);
             
-            // Sayfanın üstüne kaydır
             document.getElementById('admin-header').scrollIntoView({ behavior: 'smooth' });
         }
 
@@ -327,7 +298,6 @@
                 return;
             }
             
-            // Haberi çekme ve detaylı görüntüleme kısmı
             const newsHtml = newsList.map(news => `
                 <article class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden flex flex-col md:flex-row mb-6">
                     <div class="md:w-1/3 h-56 md:h-auto overflow-hidden">
